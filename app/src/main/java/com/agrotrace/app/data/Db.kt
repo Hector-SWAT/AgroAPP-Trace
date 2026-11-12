@@ -5,6 +5,22 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.security.MessageDigest
+
+data class Productor(
+    val id: String,
+    val nombre: String,
+    val comunidad: String,
+    val telefono: String,
+    val pinHash: String,
+    val creado: Long
+) {
+    companion object {
+        fun hashPin(id: String, pin: String): String =
+            MessageDigest.getInstance("SHA-256").digest("$id:$pin".toByteArray())
+                .joinToString("") { "%02x".format(it) }
+    }
+}
 
 data class Lote(
     val id: String,
@@ -13,7 +29,8 @@ data class Lote(
     val superficie: Double,
     val productor: String,
     val ubicacion: String,
-    val creado: Long
+    val creado: Long,
+    val productorId: String? = null
 ) {
     val cultivo: Cultivo? get() = Catalogo.cultivo(cultivoId)
 }
@@ -48,9 +65,10 @@ data class Aplicacion(
 }
 
 /** Base de datos local SQLite (sin dependencias externas). */
-class AgroDb(context: Context) : SQLiteOpenHelper(context, "agrotrace.db", null, 1) {
+class AgroDb(context: Context) : SQLiteOpenHelper(context, "agrotrace.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
+        crearProductores(db)
         db.execSQL(
             """CREATE TABLE lotes(
                 id TEXT PRIMARY KEY,
@@ -59,7 +77,8 @@ class AgroDb(context: Context) : SQLiteOpenHelper(context, "agrotrace.db", null,
                 superficie REAL NOT NULL,
                 productor TEXT NOT NULL DEFAULT '',
                 ubicacion TEXT NOT NULL DEFAULT '',
-                creado INTEGER NOT NULL)"""
+                creado INTEGER NOT NULL,
+                productor_id TEXT)"""
         )
         db.execSQL(
             """CREATE TABLE aplicaciones(
@@ -89,38 +108,96 @@ class AgroDb(context: Context) : SQLiteOpenHelper(context, "agrotrace.db", null,
                 reaplicacion_desde INTEGER NOT NULL)"""
         )
         db.execSQL("CREATE INDEX idx_apl_lote ON aplicaciones(lote_id, fecha)")
+        db.execSQL("CREATE INDEX idx_lote_prod ON lotes(productor_id)")
+    }
+
+    private fun crearProductores(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE productores(
+                id TEXT PRIMARY KEY,
+                nombre TEXT NOT NULL,
+                comunidad TEXT NOT NULL DEFAULT '',
+                telefono TEXT NOT NULL DEFAULT '',
+                pin_hash TEXT NOT NULL,
+                creado INTEGER NOT NULL)"""
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Versión 1: sin migraciones todavía.
+        if (oldVersion < 2) {
+            crearProductores(db)
+            db.execSQL("ALTER TABLE lotes ADD COLUMN productor_id TEXT")
+            db.execSQL("CREATE INDEX idx_lote_prod ON lotes(productor_id)")
+        }
     }
 
     override fun onConfigure(db: SQLiteDatabase) {
         db.setForeignKeyConstraintsEnabled(true)
     }
 
+    // ---------- Productores ----------
+
+    fun crearProductor(p: Productor) {
+        val cv = ContentValues().apply {
+            put("id", p.id); put("nombre", p.nombre); put("comunidad", p.comunidad)
+            put("telefono", p.telefono); put("pin_hash", p.pinHash); put("creado", p.creado)
+        }
+        writableDatabase.insertOrThrow("productores", null, cv)
+    }
+
+    fun productor(id: String): Productor? =
+        readableDatabase.rawQuery("SELECT * FROM productores WHERE id = ?", arrayOf(id)).use { c ->
+            if (c.moveToFirst()) c.toProductor() else null
+        }
+
+    fun productores(): List<Productor> =
+        readableDatabase.rawQuery("SELECT * FROM productores ORDER BY nombre COLLATE NOCASE", null).use { c ->
+            buildList { while (c.moveToNext()) add(c.toProductor()) }
+        }
+
+    fun productoresPorNombre(nombre: String): List<Productor> =
+        readableDatabase.rawQuery("SELECT * FROM productores WHERE TRIM(nombre) = TRIM(?) COLLATE NOCASE", arrayOf(nombre)).use { c ->
+            buildList { while (c.moveToNext()) add(c.toProductor()) }
+        }
+
     // ---------- Lotes ----------
 
-    /** Registra el lote del QR o actualiza sus datos si ya existía (los registros se conservan). */
-    fun guardarLoteDesdeQr(q: QrLote): Lote? {
+    /**
+     * Registra el lote del QR o actualiza sus datos si ya existía (los registros se conservan).
+     * Si el lote no tiene productor y se indica [dueno], queda vinculado a él.
+     */
+    fun guardarLoteDesdeQr(q: QrLote, dueno: Productor?): Lote? {
         val existente = lote(q.id)
-        if (!q.completo) return existente
+        if (!q.completo) {
+            if (existente != null && existente.productorId == null && dueno != null) asignarProductor(existente.id, dueno)
+            return lote(q.id)
+        }
         val lote = Lote(
             id = q.id,
             nombre = q.nombre ?: existente?.nombre ?: q.id,
             cultivoId = q.cultivoId!!,
             superficie = q.superficie!!,
-            productor = q.productor ?: existente?.productor ?: "",
+            productor = q.productor ?: existente?.productor?.ifBlank { null } ?: dueno?.nombre ?: "",
             ubicacion = q.ubicacion ?: existente?.ubicacion ?: "",
-            creado = existente?.creado ?: System.currentTimeMillis()
+            creado = existente?.creado ?: System.currentTimeMillis(),
+            productorId = existente?.productorId ?: dueno?.id
         )
+        guardarLote(lote)
+        return lote
+    }
+
+    fun guardarLote(lote: Lote) {
         val cv = ContentValues().apply {
             put("id", lote.id); put("nombre", lote.nombre); put("cultivo_id", lote.cultivoId)
             put("superficie", lote.superficie); put("productor", lote.productor)
-            put("ubicacion", lote.ubicacion); put("creado", lote.creado)
+            put("ubicacion", lote.ubicacion); put("creado", lote.creado); put("productor_id", lote.productorId)
         }
         writableDatabase.insertWithOnConflict("lotes", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
-        return lote
+    }
+
+    fun asignarProductor(loteId: String, p: Productor) {
+        val cv = ContentValues().apply { put("productor_id", p.id); put("productor", p.nombre) }
+        writableDatabase.update("lotes", cv, "id = ?", arrayOf(loteId))
     }
 
     fun lote(id: String): Lote? =
@@ -128,10 +205,13 @@ class AgroDb(context: Context) : SQLiteOpenHelper(context, "agrotrace.db", null,
             if (c.moveToFirst()) c.toLote() else null
         }
 
-    fun lotes(): List<Lote> =
-        readableDatabase.rawQuery("SELECT * FROM lotes ORDER BY creado DESC", null).use { c ->
+    fun lotesDe(productorId: String): List<Lote> =
+        readableDatabase.rawQuery("SELECT * FROM lotes WHERE productor_id = ? ORDER BY creado DESC", arrayOf(productorId)).use { c ->
             buildList { while (c.moveToNext()) add(c.toLote()) }
         }
+
+    fun existeId(tabla: String, id: String): Boolean =
+        readableDatabase.rawQuery("SELECT 1 FROM $tabla WHERE id = ?", arrayOf(id)).use { it.moveToFirst() }
 
     // ---------- Aplicaciones ----------
 
@@ -160,24 +240,29 @@ class AgroDb(context: Context) : SQLiteOpenHelper(context, "agrotrace.db", null,
             if (c.moveToFirst()) c.toAplicacion() else null
         }
 
-    fun totalAplicaciones(): Int =
-        readableDatabase.rawQuery("SELECT COUNT(*) FROM aplicaciones", null).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
-
-    fun aplicacionesDesde(millis: Long): Int =
-        readableDatabase.rawQuery("SELECT COUNT(*) FROM aplicaciones WHERE fecha >= ?", arrayOf(millis.toString())).use { c ->
-            if (c.moveToFirst()) c.getInt(0) else 0
-        }
+    /** Aplicaciones de los lotes de un productor a partir de [desde] (0 = todas). */
+    fun contarAplicaciones(productorId: String, desde: Long = 0L): Int =
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM aplicaciones a JOIN lotes l ON l.id = a.lote_id WHERE l.productor_id = ? AND a.fecha >= ?",
+            arrayOf(productorId, desde.toString())
+        ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
 
     // ---------- Mapeo ----------
 
     private fun Cursor.s(col: String) = getString(getColumnIndexOrThrow(col))
+    private fun Cursor.sn(col: String): String? = getColumnIndexOrThrow(col).let { if (isNull(it)) null else getString(it) }
     private fun Cursor.i(col: String) = getInt(getColumnIndexOrThrow(col))
     private fun Cursor.l(col: String) = getLong(getColumnIndexOrThrow(col))
     private fun Cursor.d(col: String) = getDouble(getColumnIndexOrThrow(col))
 
+    private fun Cursor.toProductor() = Productor(
+        id = s("id"), nombre = s("nombre"), comunidad = s("comunidad"), telefono = s("telefono"),
+        pinHash = s("pin_hash"), creado = l("creado")
+    )
+
     private fun Cursor.toLote() = Lote(
         id = s("id"), nombre = s("nombre"), cultivoId = i("cultivo_id"), superficie = d("superficie"),
-        productor = s("productor"), ubicacion = s("ubicacion"), creado = l("creado")
+        productor = s("productor"), ubicacion = s("ubicacion"), creado = l("creado"), productorId = sn("productor_id")
     )
 
     private fun Cursor.toAplicacion() = Aplicacion(

@@ -12,8 +12,8 @@ android {
         applicationId = "com.agrotrace.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     buildTypes {
@@ -50,6 +50,7 @@ dependencies {
 
     // Lector de códigos QR (sustituye la simulación NFC). Funciona sin servicios de Google.
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.zxing:core:3.4.1")
 
     testImplementation("junit:junit:4.13.2")
 }

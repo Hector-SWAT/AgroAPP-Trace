@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Science
@@ -47,10 +49,14 @@ fun InicioScreen(vm: AppViewModel, escanear: () -> Unit, modifier: Modifier = Mo
     ) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Dato("Lotes", vm.resumenes.size.toString())
-                    Dato("Aplicaciones", vm.totalAplicaciones.toString())
-                    Dato("Hoy", vm.aplicacionesHoy.toString())
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Hola, ${vm.productor?.nombre ?: ""}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = VerdeOscuro)
+                    Text("${vm.productor?.id ?: ""}${vm.productor?.comunidad?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""}", style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Dato("Lotes", vm.resumenes.size.toString())
+                        Dato("Aplicaciones", vm.totalAplicaciones.toString())
+                        Dato("Hoy", vm.aplicacionesHoy.toString())
+                    }
                 }
             }
         }
@@ -62,10 +68,23 @@ fun InicioScreen(vm: AppViewModel, escanear: () -> Unit, modifier: Modifier = Mo
             }
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                BotonBrillo(onClick = { vm.ir(Pantalla.NuevoLote) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Nuevo lote")
+                }
+                BotonBrillo(onClick = { vm.ir(Pantalla.Credencial) }, cafe = true, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Badge, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Mi QR")
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 BotonBrillo(onClick = { dialogo = true }, cafe = true, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Keyboard, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Ingresar código")
+                    Text("Código")
                 }
                 BotonBrillo(onClick = { vm.ir(Pantalla.Catalogo) }, cafe = true, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Science, contentDescription = null)
@@ -75,12 +94,12 @@ fun InicioScreen(vm: AppViewModel, escanear: () -> Unit, modifier: Modifier = Mo
             }
         }
         item {
-            Text("Lotes registrados", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Mis lotes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
         if (vm.resumenes.isEmpty()) {
             item {
                 Text(
-                    "Aún no hay lotes. Genere la etiqueta QR del lote en la web AgroTrace QR y escanéela para empezar.",
+                    "Aún no tienes lotes. Escanea la etiqueta QR de un lote (generada en la web) o crea uno con «Nuevo lote».",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -106,23 +125,5 @@ fun InicioScreen(vm: AppViewModel, escanear: () -> Unit, modifier: Modifier = Mo
         }
     }
 
-    if (dialogo) {
-        var texto by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { dialogo = false },
-            title = { Text("Ingresar código del lote") },
-            text = {
-                OutlinedTextField(
-                    value = texto,
-                    onValueChange = { texto = it },
-                    label = { Text("ID (LT-…) o contenido del QR") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { dialogo = false; vm.procesarQr(texto) }, enabled = texto.isNotBlank()) { Text("Abrir") }
-            },
-            dismissButton = { TextButton(onClick = { dialogo = false }) { Text("Cancelar") } }
-        )
-    }
+    if (dialogo) DialogoCodigo(onCerrar = { dialogo = false }, onAbrir = { vm.procesarQr(it) })
 }

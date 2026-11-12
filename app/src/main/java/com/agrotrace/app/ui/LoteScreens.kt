@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -83,6 +84,10 @@ fun DetalleLoteScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                 ) {
                     Icon(Icons.Filled.Share, contentDescription = null); Spacer(Modifier.width(6.dp)); Text("Reporte CSV")
                 }
+            }
+            Spacer(Modifier.height(12.dp))
+            BotonBrillo(onClick = { vm.ir(Pantalla.QrDeLote(lote.id)) }, cafe = true, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.QrCode, contentDescription = null); Spacer(Modifier.width(6.dp)); Text("Ver código QR del lote")
             }
         }
         item { Text("Historial (${vm.historial.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }

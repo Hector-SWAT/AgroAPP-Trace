@@ -2,7 +2,11 @@ name: Compilar APK
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   apk:
@@ -20,7 +24,18 @@ jobs:
           ./gradlew assembleDebug --stacktrace
       - name: Pruebas de la lógica
         run: ./gradlew testDebugUnitTest
+      - name: Renombrar APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk AgroTrace.apk
       - uses: actions/upload-artifact@v4
         with:
           name: AgroTrace-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: AgroTrace.apk
+      - name: Publicar en Releases (descarga directa)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ultima-version --yes --cleanup-tag || true
+          gh release create ultima-version AgroTrace.apk \
+            --title "AgroTrace (última versión)" \
+            --notes "APK generado automáticamente desde el commit ${GITHUB_SHA::7}. Descárgalo e instálalo en Android 7.0 o superior." \
+            --target "$GITHUB_SHA"

@@ -10,6 +10,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,7 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.agrotrace.app.ui.AgroTheme
 import com.agrotrace.app.ui.AppViewModel
+import com.agrotrace.app.ui.BienvenidaScreen
 import com.agrotrace.app.ui.CatalogoScreen
+import com.agrotrace.app.ui.CredencialScreen
+import com.agrotrace.app.ui.LoginScreen
+import com.agrotrace.app.ui.NuevoLoteScreen
+import com.agrotrace.app.ui.QrDeLoteScreen
+import com.agrotrace.app.ui.RegistroScreen
 import com.agrotrace.app.ui.DetalleAplicacionScreen
 import com.agrotrace.app.ui.DetalleLoteScreen
 import com.agrotrace.app.ui.InicioScreen
@@ -77,7 +84,13 @@ fun AppRoot(vm: AppViewModel) {
 
     val pantalla = vm.actual
     val titulo = when (pantalla) {
+        is Pantalla.Bienvenida -> "AgroTrace"
+        is Pantalla.Login -> "Iniciar sesión"
+        is Pantalla.Registro -> "Nuevo registro"
         is Pantalla.Inicio -> "AgroTrace"
+        is Pantalla.NuevoLote -> "Nuevo lote"
+        is Pantalla.Credencial -> "Mi credencial QR"
+        is Pantalla.QrDeLote -> "Código QR del lote"
         is Pantalla.Catalogo -> "Catálogo de productos"
         is Pantalla.DetalleLote -> vm.lote?.nombre ?: pantalla.loteId
         is Pantalla.NuevaAplicacion -> "Nueva aplicación"
@@ -95,8 +108,15 @@ fun AppRoot(vm: AppViewModel) {
                         }
                     }
                 },
+                actions = {
+                    if (pantalla is Pantalla.Inicio && vm.productor != null) {
+                        IconButton(onClick = { vm.cerrarSesion() }) {
+                            Icon(Icons.Filled.PowerSettingsNew, contentDescription = "Cerrar sesión")
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = CafeOscuro, titleContentColor = Crema, navigationIconContentColor = Crema
+                    containerColor = CafeOscuro, titleContentColor = Crema, navigationIconContentColor = Crema, actionIconContentColor = Crema
                 )
             )
         },
@@ -104,7 +124,13 @@ fun AppRoot(vm: AppViewModel) {
     ) { padding ->
         val m = Modifier.padding(padding)
         when (pantalla) {
+            is Pantalla.Bienvenida -> BienvenidaScreen(vm, escanear, m)
+            is Pantalla.Login -> LoginScreen(vm, m)
+            is Pantalla.Registro -> RegistroScreen(vm, pantalla, m)
             is Pantalla.Inicio -> InicioScreen(vm, escanear, m)
+            is Pantalla.NuevoLote -> NuevoLoteScreen(vm, m)
+            is Pantalla.Credencial -> CredencialScreen(vm, m)
+            is Pantalla.QrDeLote -> QrDeLoteScreen(vm, m)
             is Pantalla.Catalogo -> CatalogoScreen(m)
             is Pantalla.DetalleLote -> DetalleLoteScreen(vm, m)
             is Pantalla.NuevaAplicacion -> NuevaAplicacionScreen(vm, m)
